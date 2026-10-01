@@ -1,0 +1,1155 @@
+--[[
+    BLESSED HUB - EXAMINATION COMBAT & WEAPON MODIFIERS EDITION (ULTIMATE EXPANDED)
+    LocalScript (StarterPlayer > StarterPlayerScripts)
+]]
+
+--========================================================
+-- OPTIMIZED LOCALIZATIONS
+--========================================================
+
+local Vector3_new = Vector3.new
+local Vector2_new = Vector2.new
+local CFrame_new = CFrame.new
+local UDim2_fromOffset = UDim2.fromOffset
+local UDim2_fromScale = UDim2.fromScale
+local Color3_fromRGB = Color3.fromRGB
+
+local math_clamp = math.clamp
+local math_floor = math.floor
+local math_rad = math.rad
+local table_insert = table.insert
+local table_find = table.find
+
+--========================================================
+-- SERVICES
+--========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Stats = game:GetService("Stats")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+--========================================================
+-- CONFIG
+--========================================================
+
+local Config = {
+    UI = { Open = true, ToggleKey = Enum.KeyCode.F4 },
+    Aimbot = { 
+        Enabled = false, 
+        HoldToAim = true, 
+        TargetNPCs = true, 
+        Smoothness = 20, 
+        TargetPart = "Head", 
+        FOV = 150, 
+        ShowFOV = true,
+        WallCheck = false,
+        Prediction = false
+    },
+    Combat = {
+        SilentAim = false,
+        SilentAimKey = Enum.KeyCode.K,
+        SilentAimDistance = 300,
+        SilentAimMaxAngle = 60,
+        HitChance = 10000000, -- Solicitado: 10000000
+        ZombiePenetration = false,
+        InstantBulletVelocity = false,
+        NoSpread = false,
+        InfiniteAmmo = false
+    },
+    Weapon = {
+        NoRecoil = false,
+        RecoilStrength = 100,
+        FastReload = false,
+        InstantSwap = false,
+        AutoReload = false,
+        ShootThroughWalls = false,
+        FullAuto = false,
+        RapidFire = false
+    },
+    ESP = { 
+        Enabled = true, 
+        IncludeNPCs = true, 
+        Name = false, 
+        Box = false, 
+        Chams = false, 
+        Distance = false,
+        HealthBar = true,      -- NOVO
+        ShowTool = true,       -- NOVO
+        Tracers = false,       -- NOVO
+        ColorByHealth = false  -- NOVO
+    },
+    Globe = { 
+        NoFog = false, 
+        FullBright = false, 
+        HitboxEnabled = false, 
+        HitboxSize = 5, 
+        HitboxTarget = "Head", 
+        MaxDistance = 400, 
+        FixedFOVEnabled = false, 
+        FixedFOV = 120,
+        CustomTime = false,
+        TimeOfDay = 12
+    },
+    Character = { 
+        SpeedEnabled = false, 
+        Speed = 16, 
+        Fly = false, 
+        FlySpeed = 50, 
+        SpinBot = false, 
+        SpinSpeed = 100, 
+        Noclip = false,
+        InfiniteJump = false,
+        JumpPowerEnabled = false,
+        JumpPower = 50
+    }
+}
+
+--========================================================
+-- COLORS
+--========================================================
+
+local Purple = Color3_fromRGB(145, 70, 255)
+local PurpleLight = Color3_fromRGB(190, 120, 255)
+local PurpleDark = Color3_fromRGB(65, 25, 100)
+local OrangeNPC = Color3_fromRGB(255, 140, 0)
+
+local Background = Color3_fromRGB(12, 7, 18)
+local Panel = Color3_fromRGB(25, 16, 36)
+local White = Color3_fromRGB(245, 240, 255)
+local Gray = Color3_fromRGB(165, 155, 180)
+local Green = Color3_fromRGB(80, 255, 145)
+local Red = Color3_fromRGB(255, 75, 75)
+
+--========================================================
+-- CLEAN OLD UI
+--========================================================
+
+local old = PlayerGui:FindFirstChild("BlessedHub")
+if old then old:Destroy() end
+
+--========================================================
+-- SCREEN GUI & COMPONENTS
+--========================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BlessedHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+local function Corner(object, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = object
+    return c
+end
+
+local function Stroke(object, color, transparency, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Purple
+    s.Transparency = transparency or 0
+    s.Thickness = thickness or 1
+    s.Parent = object
+    return s
+end
+
+local function NewText(parent, text, size, color)
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color or White
+    label.Font = Enum.Font.Gotham
+    label.TextSize = size or 14
+    label.Parent = parent
+    return label
+end
+
+--========================================================
+-- FOV CIRCLE
+--========================================================
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.AnchorPoint = Vector2_new(0.5, 0.5)
+FOVCircle.Position = UDim2_fromScale(0.5, 0.5)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = false
+FOVCircle.Parent = ScreenGui
+
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Parent = FOVCircle
+Stroke(FOVCircle, PurpleLight, 0.3, 1.5)
+
+--========================================================
+-- MAIN INTERFACE
+--========================================================
+
+local BackgroundFrame = Instance.new("Frame")
+BackgroundFrame.Size = UDim2_fromScale(1, 1)
+BackgroundFrame.BackgroundColor3 = Color3_fromRGB(8, 4, 14)
+BackgroundFrame.BackgroundTransparency = 0.15
+BackgroundFrame.BorderSizePixel = 0
+BackgroundFrame.Parent = ScreenGui
+
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2_fromOffset(570, 48)
+TopBar.Position = UDim2_fromOffset(math_floor((Camera.ViewportSize.X - 570) / 2), 20)
+TopBar.BackgroundColor3 = Panel
+TopBar.BorderSizePixel = 0
+TopBar.Parent = ScreenGui
+Corner(TopBar, 12)
+Stroke(TopBar, Purple, 0.25, 1.5)
+
+local TopTitle = NewText(TopBar, "BLESSED HUB - EXAMINATION", 16, White)
+TopTitle.Size = UDim2_fromOffset(250, 48)
+TopTitle.Position = UDim2_fromOffset(16, 0)
+TopTitle.Font = Enum.Font.GothamBold
+TopTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local FPSLabel = NewText(TopBar, "FPS: --", 14, Green)
+FPSLabel.Size = UDim2_fromOffset(100, 48)
+FPSLabel.Position = UDim2_fromOffset(350, 0)
+FPSLabel.Font = Enum.Font.GothamBold
+
+local PingLabel = NewText(TopBar, "PING: --", 14, White)
+PingLabel.Size = UDim2_fromOffset(100, 48)
+PingLabel.Position = UDim2_fromOffset(460, 0)
+PingLabel.Font = Enum.Font.GothamBold
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2_fromOffset(850, 560)
+Main.Position = UDim2_fromScale(0.5, 0.5)
+Main.AnchorPoint = Vector2_new(0.5, 0.5)
+Main.BackgroundColor3 = Panel
+Main.BorderSizePixel = 0
+Main.Parent = ScreenGui
+Corner(Main, 16)
+Stroke(Main, Purple, 0.18, 1.5)
+
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2_fromOffset(82, 560)
+Sidebar.BackgroundColor3 = Background
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = Main
+Corner(Sidebar, 16)
+
+local SideLayout = Instance.new("UIListLayout")
+SideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+SideLayout.Padding = UDim.new(0, 10)
+SideLayout.Parent = Sidebar
+
+local SidePadding = Instance.new("UIPadding")
+SidePadding.PaddingTop = UDim.new(0, 15)
+SidePadding.Parent = Sidebar
+
+local Content = Instance.new("Frame")
+Content.Size = UDim2_fromOffset(745, 535)
+Content.Position = UDim2_fromOffset(95, 12)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+local PageTitle = NewText(Content, "Combat & Guns", 22, White)
+PageTitle.Size = UDim2_fromOffset(745, 38)
+PageTitle.TextXAlignment = Enum.TextXAlignment.Left
+PageTitle.Font = Enum.Font.GothamBold
+
+--========================================================
+-- PAGES & TABS
+--========================================================
+
+local Pages = {}
+local function CreatePage(name)
+    local page = Instance.new("Frame")
+    page.Name = name
+    page.Size = UDim2_fromOffset(745, 485)
+    page.Position = UDim2_fromOffset(0, 40)
+    page.BackgroundTransparency = 1
+    page.Visible = false
+    page.Parent = Content
+    Pages[name] = page
+    return page
+end
+
+local CombatPage = CreatePage("Combat & Guns")
+local AimPage = CreatePage("Aimbot")
+local ESPPage = CreatePage("ESP")
+local CharacterPage = CreatePage("Character")
+local GlobePage = CreatePage("Globe")
+local SettingsPage = CreatePage("Settings")
+CombatPage.Visible = true
+
+local function CreateTab(icon, title, page)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2_fromOffset(55, 50)
+    button.BackgroundColor3 = Panel
+    button.Text = icon
+    button.TextColor3 = Gray
+    button.TextSize = 20
+    button.Font = Enum.Font.GothamBold
+    button.AutoButtonColor = false
+    button.Parent = Sidebar
+    Corner(button, 10)
+
+    button.MouseButton1Click:Connect(function()
+        for _, p in pairs(Pages) do p.Visible = false end
+        page.Visible = true
+        PageTitle.Text = title
+        for _, child in ipairs(Sidebar:GetChildren()) do
+            if child:IsA("TextButton") then
+                child.BackgroundColor3 = Panel
+                child.TextColor3 = Gray
+            end
+        end
+        button.BackgroundColor3 = PurpleDark
+        button.TextColor3 = White
+    end)
+    return button
+end
+
+local DefaultTab = CreateTab("🔫", "Combat & Guns", CombatPage)
+DefaultTab.BackgroundColor3 = PurpleDark
+DefaultTab.TextColor3 = White
+CreateTab("🎯", "Aimbot", AimPage)
+CreateTab("👁", "ESP", ESPPage)
+CreateTab("♙", "Character", CharacterPage)
+CreateTab("🌐", "Globe", GlobePage)
+CreateTab("⚙", "Settings", SettingsPage)
+
+--========================================================
+-- UI CONTROLS
+--========================================================
+
+local function Section(parent, text, x, y)
+    local label = NewText(parent, text, 15, PurpleLight)
+    label.Size = UDim2_fromOffset(350, 28)
+    label.Position = UDim2_fromOffset(x, y)
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+end
+
+local function Checkbox(parent, text, tableRef, key, x, y, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2_fromOffset(350, 32)
+    button.Position = UDim2_fromOffset(x, y)
+    button.BackgroundTransparency = 1
+    button.Text = ""
+    button.Parent = parent
+
+    local box = Instance.new("Frame")
+    box.Size = UDim2_fromOffset(18, 18)
+    box.Position = UDim2_fromOffset(0, 7)
+    box.BackgroundColor3 = Background
+    box.BorderSizePixel = 0
+    box.Parent = button
+    Corner(box, 4)
+    Stroke(box, Purple, 0.35)
+
+    local check = NewText(box, "✓", 13, White)
+    check.Size = UDim2_fromScale(1, 1)
+    check.Font = Enum.Font.GothamBold
+    check.Visible = tableRef[key] or false
+
+    local label = NewText(button, text, 13, White)
+    label.Size = UDim2_fromOffset(320, 32)
+    label.Position = UDim2_fromOffset(28, 0)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    button.MouseButton1Click:Connect(function()
+        tableRef[key] = not tableRef[key]
+        check.Visible = tableRef[key]
+        if callback then callback(tableRef[key]) end
+    end)
+end
+
+local function Slider(parent, text, tableRef, key, minValue, maxValue, x, y, callback)
+    local holder = Instance.new("Frame")
+    holder.Size = UDim2_fromOffset(350, 55)
+    holder.Position = UDim2_fromOffset(x, y)
+    holder.BackgroundTransparency = 1
+    holder.Parent = parent
+
+    local label = NewText(holder, text, 13, White)
+    label.Size = UDim2_fromOffset(280, 22)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local valueLabel = NewText(holder, tostring(tableRef[key]), 13, PurpleLight)
+    valueLabel.Size = UDim2_fromOffset(60, 22)
+    valueLabel.Position = UDim2_fromOffset(290, 0)
+    valueLabel.Font = Enum.Font.GothamBold
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2_fromOffset(350, 6)
+    bar.Position = UDim2_fromOffset(0, 32)
+    bar.BackgroundColor3 = Background
+    bar.BorderSizePixel = 0
+    bar.Parent = holder
+    Corner(bar, 4)
+
+    local fill = Instance.new("Frame")
+    fill.BackgroundColor3 = Purple
+    fill.BorderSizePixel = 0
+    fill.Parent = bar
+    Corner(fill, 4)
+
+    local function Update(positionX)
+        local percent = math_clamp((positionX - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        local value = math_floor(minValue + (maxValue - minValue) * percent)
+        tableRef[key] = value
+        valueLabel.Text = tostring(value)
+        fill.Size = UDim2_fromScale(percent, 1)
+        if callback then callback(value) end
+    end
+
+    fill.Size = UDim2_fromScale(math_clamp((tableRef[key] - minValue) / (maxValue - minValue), 0, 1), 1)
+
+    local dragging = false
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            Update(input.Position.X)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            Update(input.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+end
+
+local function Dropdown(parent, text, tableRef, key, options, x, y)
+    local holder = Instance.new("Frame")
+    holder.Size = UDim2_fromOffset(350, 42)
+    holder.Position = UDim2_fromOffset(x, y)
+    holder.BackgroundTransparency = 1
+    holder.Parent = parent
+
+    NewText(holder, text, 13, White).Size = UDim2_fromOffset(130, 42)
+
+    local button = Instance.new("TextButton")
+    button.Size = UDim2_fromOffset(200, 30)
+    button.Position = UDim2_fromOffset(150, 6)
+    button.BackgroundColor3 = Background
+    button.Text = tostring(tableRef[key])
+    button.TextColor3 = White
+    button.Font = Enum.Font.Gotham
+    button.TextSize = 12
+    button.Parent = holder
+    Corner(button, 6)
+    Stroke(button, Purple, 0.5)
+
+    local index = table_find(options, tableRef[key]) or 1
+    button.MouseButton1Click:Connect(function()
+        index = (index % #options) + 1
+        tableRef[key] = options[index]
+        button.Text = tostring(options[index])
+    end)
+end
+
+local function ActionButton(parent, text, color, x, y, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2_fromOffset(350, 38)
+    button.Position = UDim2_fromOffset(x, y)
+    button.BackgroundColor3 = color or Purple
+    button.Text = text
+    button.TextColor3 = White
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 13
+    button.Parent = parent
+
+    Corner(button, 8)
+    button.MouseButton1Click:Connect(callback)
+    return button
+end
+
+--========================================================
+-- TAB SETUP (EXAMINATION & COMBAT OPTIONS)
+--========================================================
+
+-- LEFT COLUMN: SILENT AIM & TARGETING
+Section(CombatPage, "SILENT AIM & TARGETING", 0, 0)
+Checkbox(CombatPage, "True Silent Aim", Config.Combat, "SilentAim", 0, 32)
+Slider(CombatPage, "Silent Aim Distance", Config.Combat, "SilentAimDistance", 50, 400, 0, 68)
+Slider(CombatPage, "Silent Aim Max Angle", Config.Combat, "SilentAimMaxAngle", 10, 180, 0, 128)
+Slider(CombatPage, "Hit Chance (%)", Config.Combat, "HitChance", 0, 10000000, 0, 188) -- Hit Chance até 10,000,000
+Checkbox(CombatPage, "Zombie Penetration", Config.Combat, "ZombiePenetration", 0, 248)
+Checkbox(CombatPage, "Instant Bullet Velocity", Config.Combat, "InstantBulletVelocity", 0, 280)
+Checkbox(CombatPage, "No Weapon Spread", Config.Combat, "NoSpread", 0, 312) -- NOVO
+Checkbox(CombatPage, "Infinite Ammo Logic", Config.Combat, "InfiniteAmmo", 0, 344) -- NOVO
+
+-- RIGHT COLUMN: WEAPON MODIFIERS
+Section(CombatPage, "WEAPON MODIFIERS", 375, 0)
+Checkbox(CombatPage, "No Recoil", Config.Weapon, "NoRecoil", 375, 32)
+Slider(CombatPage, "Recoil Strength", Config.Weapon, "RecoilStrength", 0, 100, 375, 68)
+Checkbox(CombatPage, "Fast Reload", Config.Weapon, "FastReload", 375, 128)
+Checkbox(CombatPage, "Instant Weapon Swap", Config.Weapon, "InstantSwap", 375, 160)
+Checkbox(CombatPage, "Auto Reload", Config.Weapon, "AutoReload", 375, 192)
+Checkbox(CombatPage, "Shoot Inside Walls", Config.Weapon, "ShootThroughWalls", 375, 224)
+Checkbox(CombatPage, "Full Auto / Continuous Spray", Config.Weapon, "FullAuto", 375, 256)
+Checkbox(CombatPage, "Rapid Fire Boost", Config.Weapon, "RapidFire", 375, 288) -- NOVO
+
+-- AIMBOT PAGE
+Section(AimPage, "AIMBOT SETTINGS", 0, 0)
+Checkbox(AimPage, "Enable Aimbot / AimLock", Config.Aimbot, "Enabled", 0, 32)
+Checkbox(AimPage, "Hold Right Mouse Button", Config.Aimbot, "HoldToAim", 0, 68)
+Checkbox(AimPage, "Target NPCs & Entities", Config.Aimbot, "TargetNPCs", 0, 104)
+Checkbox(AimPage, "Show FOV Circle", Config.Aimbot, "ShowFOV", 0, 140)
+Checkbox(AimPage, "Wall Check (Visible Only)", Config.Aimbot, "WallCheck", 0, 176) -- NOVO
+Checkbox(AimPage, "Target Movement Prediction", Config.Aimbot, "Prediction", 0, 212) -- NOVO
+Slider(AimPage, "Smoothness", Config.Aimbot, "Smoothness", 1, 100, 0, 248)
+Dropdown(AimPage, "Target Part", Config.Aimbot, "TargetPart", {"Head", "HumanoidRootPart", "Torso"}, 0, 308)
+Slider(AimPage, "FOV Radius", Config.Aimbot, "FOV", 30, 600, 0, 354)
+
+-- ESP PAGE (ULTRA IMPROVED)
+Section(ESPPage, "ESP SETTINGS (ENHANCED)", 0, 0)
+Checkbox(ESPPage, "Enable ESP System", Config.ESP, "Enabled", 0, 32)
+Checkbox(ESPPage, "Include NPCs / Examination", Config.ESP, "IncludeNPCs", 0, 68)
+Checkbox(ESPPage, "Show Name", Config.ESP, "Name", 0, 104)
+Checkbox(ESPPage, "Show Distance", Config.ESP, "Distance", 0, 140)
+Checkbox(ESPPage, "Show Health Bar", Config.ESP, "HealthBar", 0, 176) -- NOVO
+Checkbox(ESPPage, "Show Equipped Tool", Config.ESP, "ShowTool", 0, 212) -- NOVO
+Checkbox(ESPPage, "Color Code By Health", Config.ESP, "ColorByHealth", 0, 248) -- NOVO
+Checkbox(ESPPage, "3D Box", Config.ESP, "Box", 0, 284)
+Checkbox(ESPPage, "Chams (Highlight)", Config.ESP, "Chams", 0, 320)
+
+Section(ESPPage, "TRACERS & LINES", 375, 0)
+Checkbox(ESPPage, "Enable Snaplines / Tracers", Config.ESP, "Tracers", 375, 32) -- NOVO
+
+-- CHARACTER PAGE
+Section(CharacterPage, "MOVEMENT & CHARACTER", 0, 0)
+Checkbox(CharacterPage, "Custom Speed", Config.Character, "SpeedEnabled", 0, 32)
+Slider(CharacterPage, "Walk Speed", Config.Character, "Speed", 16, 250, 0, 68)
+Checkbox(CharacterPage, "Custom Jump Power", Config.Character, "JumpPowerEnabled", 0, 128) -- NOVO
+Slider(CharacterPage, "Jump Power", Config.Character, "JumpPower", 50, 300, 0, 164) -- NOVO
+Checkbox(CharacterPage, "Infinite Jump in Air", Config.Character, "InfiniteJump", 0, 224) -- NOVO
+Checkbox(CharacterPage, "Fly Mode", Config.Character, "Fly", 0, 260)
+Slider(CharacterPage, "Fly Speed", Config.Character, "FlySpeed", 10, 300, 0, 296)
+Checkbox(CharacterPage, "Spin Bot", Config.Character, "SpinBot", 375, 32)
+Slider(CharacterPage, "Spin Speed", Config.Character, "SpinSpeed", 10, 500, 375, 68)
+Checkbox(CharacterPage, "Noclip (Walk Through Walls)", Config.Character, "Noclip", 375, 128)
+
+-- GLOBE PAGE
+Section(GlobePage, "WORLD VISUALS", 0, 0)
+Checkbox(GlobePage, "Remove Fog", Config.Globe, "NoFog", 0, 32)
+Checkbox(GlobePage, "Full Brightness", Config.Globe, "FullBright", 0, 68)
+Checkbox(GlobePage, "Lock Camera FOV (120)", Config.Globe, "FixedFOVEnabled", 0, 104)
+Checkbox(GlobePage, "Custom Time of Day", Config.Globe, "CustomTime", 0, 140) -- NOVO
+Slider(GlobePage, "Time of Day (Hours)", Config.Globe, "TimeOfDay", 0, 24, 0, 176) -- NOVO
+
+Section(GlobePage, "HITBOX EXPANDER (ALL & HEAD)", 0, 240)
+Checkbox(GlobePage, "Expand Target Hitbox", Config.Globe, "HitboxEnabled", 0, 272)
+Dropdown(GlobePage, "Hitbox Target Part", Config.Globe, "HitboxTarget", {"Head", "HumanoidRootPart"}, 0, 308)
+Slider(GlobePage, "Hitbox Size", Config.Globe, "HitboxSize", 2, 50, 0, 354)
+Slider(GlobePage, "Max Distance (Meters)", Config.Globe, "MaxDistance", 50, 400, 0, 414)
+
+-- SETTINGS PAGE
+Section(SettingsPage, "CONFIGURATION MANAGER", 0, 0)
+ActionButton(SettingsPage, "CLOSE HUB", Red, 0, 32, function()
+    Config.UI.Open = false
+    Main.Visible = false
+    TopBar.Visible = false
+    BackgroundFrame.Visible = false
+end)
+
+--========================================================
+-- CAMERA FOV & LIGHTING OVERRIDES
+--========================================================
+
+RunService:BindToRenderStep(
+    "FixedFOV",
+    Enum.RenderPriority.Camera.Value + 1,
+    function()
+        if Config.Globe.FixedFOVEnabled then
+            local cam = Workspace.CurrentCamera
+            if cam then
+                cam.FieldOfView = Config.Globe.FixedFOV
+            end
+        end
+
+        if Config.Globe.FullBright then
+            Lighting.Ambient = Color3_fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3_fromRGB(255, 255, 255)
+            Lighting.Brightness = 2
+        end
+
+        if Config.Globe.NoFog then
+            Lighting.FogEnd = 9e9
+        end
+
+        if Config.Globe.CustomTime then
+            Lighting.TimeOfDay = string.format("%02d:00:00", Config.Globe.TimeOfDay)
+        end
+    end
+)
+
+--========================================================
+-- OPTIMIZED NOCLIP CACHE
+--========================================================
+
+local LocalCharacterParts = {}
+local function CacheCharacterParts(character)
+    LocalCharacterParts = {}
+    if not character then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table_insert(LocalCharacterParts, part)
+        end
+    end
+end
+
+if LocalPlayer.Character then CacheCharacterParts(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.2)
+    CacheCharacterParts(char)
+end)
+
+RunService.Stepped:Connect(function()
+    if Config.Character.Noclip then
+        for i = 1, #LocalCharacterParts do
+            local p = LocalCharacterParts[i]
+            if p and p.Parent then
+                p.CanCollide = false
+            end
+        end
+    end
+end)
+
+--========================================================
+-- UNIVERSAL ENTITY / NPC & PLAYER SCANNER (ENHANCED ESP)
+--========================================================
+
+local EntityCache = {}
+
+local function ClearEntityESP(model)
+    if EntityCache[model] then
+        for _, obj in pairs(EntityCache[model]) do
+            if typeof(obj) == "Instance" then
+                obj:Destroy()
+            end
+        end
+        EntityCache[model] = nil
+    end
+end
+
+local function GetEntityRoot(model)
+    if not model then return nil end
+    return model:FindFirstChild("HumanoidRootPart") 
+        or model:FindFirstChild("Torso") 
+        or model:FindFirstChild("UpperTorso") 
+        or model:FindFirstChild("LowerTorso") 
+        or model.PrimaryPart
+end
+
+local function IsValidEntity(model)
+    if not model or not model:IsA("Model") or model == LocalPlayer.Character then return false end
+    local hum = model:FindFirstChildWhichIsA("Humanoid")
+    local root = GetEntityRoot(model)
+    if hum and hum.Health > 0 and root then
+        return true
+    end
+    return false
+end
+
+local function SetupEntityESP(model)
+    if EntityCache[model] or not IsValidEntity(model) then return end
+
+    local player = Players:GetPlayerFromCharacter(model)
+    local isPlayer = player ~= nil
+
+    local root = GetEntityRoot(model)
+    local head = model:FindFirstChild("Head") or root
+    local hum = model:FindFirstChildWhichIsA("Humanoid")
+
+    if not root or not hum then return end
+
+    local data = {
+        Model = model,
+        Root = root,
+        Head = head,
+        Humanoid = hum,
+        IsPlayer = isPlayer,
+        Name = isPlayer and player.DisplayName or model.Name
+    }
+
+    local mainColor = isPlayer and Purple or OrangeNPC
+    local boxColor = isPlayer and PurpleLight or OrangeNPC
+
+    -- Highlight (Chams)
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = model
+    highlight.FillColor = mainColor
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = White
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
+    highlight.Parent = model
+    data.Highlight = highlight
+
+    -- 3D Box
+    local box = Instance.new("BoxHandleAdornment")
+    box.Adornee = root
+    box.Size = Vector3_new(4, 6, 2)
+    box.Color3 = boxColor
+    box.Transparency = 0.6
+    box.AlwaysOnTop = true
+    box.Visible = false
+    box.Parent = root
+    data.Box = box
+
+    -- Advanced Billboard ESP (Health, Name, Tool, Distance)
+    if head then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Size = UDim2_fromOffset(220, 65)
+        billboard.StudsOffset = Vector3_new(0, 3.8, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Adornee = head
+        billboard.Enabled = false
+        billboard.Parent = head
+
+        local nameLabel = NewText(billboard, "", 12, White)
+        nameLabel.Size = UDim2_fromOffset(220, 18)
+        nameLabel.Position = UDim2_fromOffset(0, 0)
+        nameLabel.Font = Enum.Font.GothamBold
+
+        -- Health Bar Background
+        local healthBg = Instance.new("Frame")
+        healthBg.Size = UDim2_fromOffset(140, 6)
+        healthBg.Position = UDim2_fromOffset(40, 22)
+        healthBg.BackgroundColor3 = Color3_fromRGB(40, 40, 40)
+        healthBg.BorderSizePixel = 0
+        healthBg.Parent = billboard
+        Corner(healthBg, 3)
+
+        local healthFill = Instance.new("Frame")
+        healthFill.Size = UDim2_fromScale(1, 1)
+        healthFill.BackgroundColor3 = Green
+        healthFill.BorderSizePixel = 0
+        healthFill.Parent = healthBg
+        Corner(healthFill, 3)
+
+        local infoLabel = NewText(billboard, "", 11, Gray)
+        infoLabel.Size = UDim2_fromOffset(220, 32)
+        infoLabel.Position = UDim2_fromOffset(0, 30)
+
+        data.Billboard = billboard
+        data.NameLabel = nameLabel
+        data.HealthBg = healthBg
+        data.HealthFill = healthFill
+        data.InfoLabel = infoLabel
+    end
+
+    -- Tracer Line Handle
+    local line = Instance.new("LineHandleAdornment")
+    line.Length = 0
+    line.Thickness = 2
+    line.Color3 = mainColor
+    line.AlwaysOnTop = true
+    line.Visible = false
+    line.Adornee = root
+    line.Parent = root
+    data.TracerLine = line
+
+    EntityCache[model] = data
+
+    hum.Died:Connect(function()
+        ClearEntityESP(model)
+    end)
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        for model, data in pairs(EntityCache) do
+            if not model or not model.Parent or not data.Humanoid or data.Humanoid.Health <= 0 then
+                ClearEntityESP(model)
+            end
+        end
+
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and IsValidEntity(obj) then
+                SetupEntityESP(obj)
+            end
+        end
+    end
+end)
+
+Workspace.DescendantAdded:Connect(function(desc)
+    if desc:IsA("Model") and IsValidEntity(desc) then
+        SetupEntityESP(desc)
+    elseif desc:IsA("BasePart") and desc.Name == "Head" then
+        if desc.Parent and IsValidEntity(desc.Parent) then
+            SetupEntityESP(desc.Parent)
+        end
+    end
+end)
+
+-- Dynamic ESP Updater Loop
+RunService.RenderStepped:Connect(function()
+    if not Config.ESP.Enabled then
+        for _, data in pairs(EntityCache) do
+            if data.Highlight then data.Highlight.Enabled = false end
+            if data.Box then data.Box.Visible = false end
+            if data.Billboard then data.Billboard.Enabled = false end
+            if data.TracerLine then data.TracerLine.Visible = false end
+        end
+        return
+    end
+
+    local camPos = Camera.CFrame.Position
+
+    for model, data in pairs(EntityCache) do
+        local show = (data.IsPlayer and true) or (not data.IsPlayer and Config.ESP.IncludeNPCs)
+        if show and data.Humanoid and data.Humanoid.Health > 0 and data.Root then
+            local distMeters = math_floor((camPos - data.Root.Position).Magnitude)
+            local healthPct = math_clamp(data.Humanoid.Health / math.max(data.Humanoid.MaxHealth, 1), 0, 1)
+
+            -- Color calculation
+            local healthColor = Green:Lerp(Red, 1 - healthPct)
+            local finalColor = Config.ESP.ColorByHealth and healthColor or (data.IsPlayer and Purple or OrangeNPC)
+
+            -- Highlight (Chams)
+            if data.Highlight then
+                data.Highlight.Enabled = Config.ESP.Chams
+                data.Highlight.FillColor = finalColor
+            end
+
+            -- 3D Box
+            if data.Box then
+                data.Box.Visible = Config.ESP.Box
+                data.Box.Color3 = finalColor
+            end
+
+            -- Billboard Details
+            if data.Billboard then
+                data.Billboard.Enabled = Config.ESP.Name or Config.ESP.Distance or Config.ESP.HealthBar or Config.ESP.ShowTool
+                
+                if Config.ESP.Name then
+                    data.NameLabel.Text = data.Name
+                    data.NameLabel.TextColor3 = finalColor
+                else
+                    data.NameLabel.Text = ""
+                end
+
+                if Config.ESP.HealthBar then
+                    data.HealthBg.Visible = true
+                    data.HealthFill.Size = UDim2_fromScale(healthPct, 1)
+                    data.HealthFill.BackgroundColor3 = healthColor
+                else
+                    data.HealthBg.Visible = false
+                end
+
+                local toolObj = model:FindFirstChildOfClass("Tool")
+                local toolName = toolObj and toolObj.Name or "None"
+                local infoText = ""
+
+                if Config.ESP.Distance then infoText = infoText .. "[" .. distMeters .. "m] " end
+                if Config.ESP.ShowTool then infoText = infoText .. "Item: " .. toolName end
+                data.InfoLabel.Text = infoText
+            end
+
+            -- Snaplines / Tracers
+            if data.TracerLine then
+                data.TracerLine.Visible = Config.ESP.Tracers
+                data.TracerLine.Color3 = finalColor
+                data.TracerLine.CFrame = CFrame_new(Vector3.zero, data.Root.Position - camPos)
+                data.TracerLine.Length = (data.Root.Position - camPos).Magnitude
+            end
+        else
+            if data.Highlight then data.Highlight.Enabled = false end
+            if data.Box then data.Box.Visible = false end
+            if data.Billboard then data.Billboard.Enabled = false end
+            if data.TracerLine then data.TracerLine.Visible = false end
+        end
+    end
+end)
+
+--========================================================
+-- SILENT AIM & WEAPON ENGINE (EXAMINATION HOOKS)
+--========================================================
+
+local function GetSilentAimTarget()
+    -- Hit Chance logic (10,000,000% garante acertar sempre)
+    if math.random(1, 100) > (Config.Combat.HitChance) then
+        return nil
+    end
+
+    local closest, shortestAngle = nil, Config.Combat.SilentAimMaxAngle
+    local camPos = Camera.CFrame.Position
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for model, data in pairs(EntityCache) do
+        if model and model.Parent and data.Humanoid and data.Humanoid.Health > 0 and data.Head then
+            local distMeters = (camPos - data.Head.Position).Magnitude
+            if distMeters <= Config.Combat.SilentAimDistance then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(data.Head.Position)
+                if onScreen then
+                    local dist = (Vector2_new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist < shortestAngle then
+                        shortestAngle = dist
+                        closest = data.Head
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- Weapon Modifier Loop (Fast Reload, Auto Reload, No Recoil, Wall Penetration, Rapid Fire)
+RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildWhichIsA("Humanoid")
+        local tool = char:FindFirstChildOfClass("Tool")
+
+        if hum then
+            local animator = hum:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                    local name = track.Name:lower()
+                    if Config.Weapon.FastReload and (name:find("reload") or name:find("charge")) then
+                        track:AdjustSpeed(100)
+                    elseif Config.Weapon.InstantSwap and (name:find("equip") or name:find("draw") or name:find("swap")) then
+                        track:AdjustSpeed(100)
+                    end
+                end
+            end
+        end
+
+        -- Weapon Attributes Override
+        if tool then
+            pcall(function()
+                if Config.Weapon.NoRecoil then
+                    if tool:FindFirstChild("Recoil") then tool.Recoil.Value = tool.Recoil.Value * (1 - (Config.Weapon.RecoilStrength / 100)) end
+                    if tool:FindFirstChild("CameraShake") then tool.CameraShake.Value = 0 end
+                end
+
+                if Config.Weapon.FullAuto then
+                    if tool:FindFirstChild("Auto") then tool.Auto.Value = true end
+                    if tool:FindFirstChild("Mode") then tool.Mode.Value = "Auto" end
+                end
+
+                if Config.Combat.NoSpread then
+                    if tool:FindFirstChild("Spread") then tool.Spread.Value = 0 end
+                    if tool:FindFirstChild("Accuracy") then tool.Accuracy.Value = 1 end
+                end
+
+                if Config.Weapon.RapidFire then
+                    if tool:FindFirstChild("FireRate") then tool.FireRate.Value = 0.01 end
+                    if tool:FindFirstChild("Cooldown") then tool.Cooldown.Value = 0.01 end
+                end
+
+                if Config.Combat.InfiniteAmmo then
+                    if tool:FindFirstChild("Ammo") then tool.Ammo.Value = 999 end
+                    if tool:FindFirstChild("StoredAmmo") then tool.StoredAmmo.Value = 999 end
+                end
+            end)
+        end
+    end
+end)
+
+--========================================================
+-- HITBOX EXPANDER (SUPPORT FOR HEAD & ROOTPART - MAX 400M)
+--========================================================
+
+task.spawn(function()
+    while true do
+        task.wait(0.15)
+        local camPos = Camera.CFrame.Position
+
+        for model, data in pairs(EntityCache) do
+            if model and model.Parent and data.Humanoid and data.Humanoid.Health > 0 then
+                local targetPart = (Config.Globe.HitboxTarget == "Head" and data.Head) or data.Root
+                if targetPart then
+                    local dist = (camPos - targetPart.Position).Magnitude
+
+                    if Config.Globe.HitboxEnabled and dist <= Config.Globe.MaxDistance then
+                        local sz = Config.Globe.HitboxSize
+                        if targetPart.Size.X ~= sz or targetPart.Size.Y ~= sz then
+                            pcall(function()
+                                targetPart.Size = Vector3_new(sz, sz, sz)
+                                targetPart.Transparency = 0.5
+                                targetPart.Color = data.IsPlayer and Purple or OrangeNPC
+                                targetPart.Material = Enum.Material.ForceField
+                                targetPart.CanCollide = false
+                                targetPart.Massless = true
+                            end)
+                        end
+                    else
+                        if targetPart.Size.X ~= 2 and targetPart.Size.X ~= 1 then
+                            pcall(function()
+                                targetPart.Size = Vector3_new(2, 2, 1)
+                                targetPart.Transparency = 1
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+--========================================================
+-- PERFORMANCE MONITOR (1 SEC INTERVAL)
+--========================================================
+
+task.spawn(function()
+    local frames = 0
+    RunService.RenderStepped:Connect(function() frames += 1 end)
+
+    while true do
+        task.wait(1)
+        FPSLabel.Text = "FPS: " .. tostring(frames)
+        frames = 0
+
+        pcall(function()
+            local pingItem = Stats.Network.ServerStatsItem["Data Ping"]
+            if pingItem then
+                PingLabel.Text = "PING: " .. math_floor(pingItem:GetValue()) .. "ms"
+            end
+        end)
+    end
+end)
+
+--========================================================
+-- AIMBOT TARGET FINDER (400M RANGE)
+--========================================================
+
+local function GetClosestTarget()
+    local closest, shortestDist = nil, Config.Aimbot.FOV
+    local mousePos = UserInputService:GetMouseLocation()
+    local camPos = Camera.CFrame.Position
+
+    for model, data in pairs(EntityCache) do
+        if model and model.Parent and data.Humanoid and data.Humanoid.Health > 0 and data.Root then
+            local distMeters = (camPos - data.Root.Position).Magnitude
+            if distMeters <= Config.Globe.MaxDistance then
+                local isPlayer = data.IsPlayer
+                if isPlayer or (not isPlayer and Config.Aimbot.TargetNPCs) then
+                    local targetPart = model:FindFirstChild(Config.Aimbot.TargetPart) or data.Head or data.Root
+                    if targetPart then
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                        if onScreen then
+                            -- Wall Check logic
+                            local visible = true
+                            if Config.Aimbot.WallCheck then
+                                local rayParams = RaycastParams.new()
+                                rayParams.FilterType = RaycastFilterType.Exclude
+                                rayParams.FilterDescendantsInstances = {LocalPlayer.Character, model}
+                                local result = Workspace:Raycast(camPos, targetPart.Position - camPos, rayParams)
+                                if result then visible = false end
+                            end
+
+                            if visible then
+                                local dist = (Vector2_new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                if dist < shortestDist then
+                                    shortestDist = dist
+                                    closest = targetPart
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+--========================================================
+-- MAIN RENDER & INPUT LOOP
+--========================================================
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Config.UI.ToggleKey then
+        Config.UI.Open = not Config.UI.Open
+        Main.Visible = Config.UI.Open
+        TopBar.Visible = Config.UI.Open
+        BackgroundFrame.Visible = Config.UI.Open
+    elseif input.KeyCode == Enum.KeyCode.Space and Config.Character.InfiniteJump then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildWhichIsA("Humanoid")
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+    FOVCircle.Visible = Config.Aimbot.Enabled and Config.Aimbot.ShowFOV
+    if FOVCircle.Visible then
+        local sz = Config.Aimbot.FOV * 2
+        FOVCircle.Size = UDim2_fromOffset(sz, sz)
+    end
+
+    if Config.Aimbot.Enabled then
+        local aiming = not Config.Aimbot.HoldToAim or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        if aiming then
+            local target = GetClosestTarget()
+            if target then
+                local targetPos = target.Position
+                if Config.Aimbot.Prediction and target.Parent then
+                    local root = target.Parent:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        targetPos = targetPos + (root.Velocity * 0.05)
+                    end
+                end
+
+                local targetCF = CFrame_new(Camera.CFrame.Position, targetPos)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCF, math_clamp(1 / (Config.Aimbot.Smoothness / 5), 0.01, 1))
+            end
+        end
+    end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildWhichIsA("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+
+        if hum then
+            hum.WalkSpeed = Config.Character.SpeedEnabled and Config.Character.Speed or 16
+            if Config.Character.JumpPowerEnabled then
+                hum.UseJumpPower = true
+                hum.JumpPower = Config.Character.JumpPower
+            end
+        end
+
+        if root then
+            -- Fly Mode
+            if Config.Character.Fly then
+                local dir = Vector3.zero
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3_new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3_new(0, 1, 0) end
+
+                if dir.Magnitude > 0 then
+                    root.Velocity = dir.Unit * Config.Character.FlySpeed
+                else
+                    root.Velocity = Vector3.zero
+                end
+            end
+
+            -- SpinBot Mode
+            if Config.Character.SpinBot then
+                root.CFrame = root.CFrame * CFrame.Angles(0, math_rad(Config.Character.SpinSpeed * dt * 10), 0)
+            end
+        end
+    end
+end)
