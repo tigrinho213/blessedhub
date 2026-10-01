@@ -1,0 +1,962 @@
+--========================================================
+-- BLESSED HUB - FULL MOBILE EDITION (ALL FEATURES FIXED)
+--========================================================
+
+local Vector3_new = Vector3.new
+local Vector2_new = Vector2.new
+local CFrame_new = CFrame.new
+local CFrame_Angles = CFrame.Angles
+local UDim2_fromOffset = UDim2.fromOffset
+local UDim2_fromScale = UDim2.fromScale
+local Color3_fromRGB = Color3.fromRGB
+
+local math_clamp = math.clamp
+local math_floor = math.floor
+local math_rad = math.rad
+local table_insert = table.insert
+local table_find = table.find
+
+--========================================================
+-- SERVICES & LOCAL PLAYER
+--========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Stats = game:GetService("Stats")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Parent Seguro para Executores Mobile
+local ParentGui
+if gethui then
+    ParentGui = gethui()
+elseif game:GetService("CoreGui"):FindFirstChild("RobloxGui") then
+    ParentGui = game:GetService("CoreGui")
+else
+    ParentGui = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- Limpa UI antiga se existir
+local oldUI = ParentGui:FindFirstChild("BlessedHub") or LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("BlessedHub")
+if oldUI then oldUI:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BlessedHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = ParentGui
+
+--========================================================
+-- CONFIGURAÇÕES GLOBAIS
+--========================================================
+
+local Config = {
+    UI = { Open = false },
+    Aimbot = { 
+        Enabled = false, 
+        HoldToAim = false, 
+        TargetNPCs = true, 
+        Smoothness = 15, 
+        TargetPart = "Head", 
+        FOV = 150, 
+        ShowFOV = true,
+        WallCheck = false,
+        Prediction = false
+    },
+    Combat = {
+        SilentAim = false,
+        SilentAimDistance = 300,
+        SilentAimMaxAngle = 60,
+        HitChance = 100,
+        ZombiePenetration = false,
+        InstantBulletVelocity = false,
+        NoSpread = false,
+        InfiniteAmmo = false
+    },
+    Weapon = {
+        NoRecoil = false,
+        RecoilStrength = 100,
+        FastReload = false,
+        InstantSwap = false,
+        AutoReload = false,
+        ShootThroughWalls = false,
+        FullAuto = false,
+        RapidFire = false
+    },
+    ESP = { 
+        Enabled = true, 
+        IncludeNPCs = true, 
+        Name = true, 
+        Box = false, 
+        Chams = false, 
+        Distance = true,
+        HealthBar = true,
+        ShowTool = true,
+        Tracers = false,
+        ColorByHealth = false
+    },
+    Globe = { 
+        NoFog = false, 
+        FullBright = false, 
+        HitboxEnabled = false, 
+        HitboxSize = 6, 
+        HitboxTarget = "Head", 
+        MaxDistance = 400, 
+        FixedFOVEnabled = false, 
+        FixedFOV = 120,
+        CustomTime = false,
+        TimeOfDay = 12
+    },
+    Character = { 
+        SpeedEnabled = false, 
+        Speed = 24, 
+        Fly = false, 
+        FlySpeed = 50, 
+        SpinBot = false, 
+        SpinSpeed = 100, 
+        Noclip = false,
+        InfiniteJump = false,
+        JumpPowerEnabled = false,
+        JumpPower = 50
+    }
+}
+
+--========================================================
+-- PALETA DE CORES
+--========================================================
+
+local Purple = Color3_fromRGB(145, 70, 255)
+local PurpleLight = Color3_fromRGB(190, 120, 255)
+local PurpleDark = Color3_fromRGB(65, 25, 100)
+local OrangeNPC = Color3_fromRGB(255, 140, 0)
+
+local Background = Color3_fromRGB(12, 7, 18)
+local Panel = Color3_fromRGB(25, 16, 36)
+local White = Color3_fromRGB(245, 240, 255)
+local Gray = Color3_fromRGB(165, 155, 180)
+local Green = Color3_fromRGB(80, 255, 145)
+local Red = Color3_fromRGB(255, 75, 75)
+
+--========================================================
+-- HELPER FUNCTIONS
+--========================================================
+
+local function Corner(obj, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = obj
+end
+
+local function Stroke(obj, color, transp, thick)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Purple
+    s.Transparency = transp or 0
+    s.Thickness = thick or 1.5
+    s.Parent = obj
+end
+
+local function NewText(parent, text, size, color)
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color or White
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = size or 12
+    label.Parent = parent
+    return label
+end
+
+--========================================================
+-- CÍRCULO DO FOV (FIXADO NO CENTRO DA TELA)
+--========================================================
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2_new(0.5, 0.5)
+FOVCircle.Position = UDim2_fromScale(0.5, 0.5) -- CENTRO DA TELA
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = false
+FOVCircle.ZIndex = 5
+FOVCircle.Parent = ScreenGui
+Corner(FOVCircle, 1000)
+Stroke(FOVCircle, PurpleLight, 0.2, 1.5)
+
+--========================================================
+-- BOTÃO FLUTUANTE QUADRADO (BH) - MOBILE TOGGLE
+--========================================================
+
+local OpenSquare = Instance.new("TextButton")
+OpenSquare.Name = "OpenSquareButton"
+OpenSquare.Size = UDim2_fromOffset(55, 55)
+OpenSquare.Position = UDim2_fromOffset(15, 160)
+OpenSquare.BackgroundColor3 = Panel
+OpenSquare.Text = "BH"
+OpenSquare.TextColor3 = PurpleLight
+OpenSquare.Font = Enum.Font.GothamBold
+OpenSquare.TextSize = 22
+OpenSquare.ZIndex = 100
+OpenSquare.Active = true
+OpenSquare.Parent = ScreenGui
+Corner(OpenSquare, 14)
+Stroke(OpenSquare, Purple, 0, 2)
+
+--========================================================
+-- ESTRUTURA DA INTERFACE PRINCIPAL
+--========================================================
+
+local MainContainer = Instance.new("Frame")
+MainContainer.Name = "MainContainer"
+MainContainer.Size = UDim2_fromScale(0.88, 0.82)
+MainContainer.Position = UDim2_fromScale(0.5, 0.5)
+MainContainer.AnchorPoint = Vector2_new(0.5, 0.5)
+MainContainer.BackgroundColor3 = Panel
+MainContainer.Visible = false
+MainContainer.ZIndex = 10
+MainContainer.Parent = ScreenGui
+Corner(MainContainer, 14)
+Stroke(MainContainer, Purple, 0.2, 2)
+
+-- Top Bar
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 42)
+TopBar.BackgroundColor3 = Background
+TopBar.Parent = MainContainer
+Corner(TopBar, 14)
+
+local TopTitle = NewText(TopBar, " BLESSED HUB [MOBILE FULL]", 13, White)
+TopTitle.Size = UDim2.new(0.45, 0, 1, 0)
+TopTitle.Position = UDim2_fromOffset(10, 0)
+TopTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local FPSLabel = NewText(TopBar, "FPS: --", 11, Green)
+FPSLabel.Size = UDim2.new(0.2, 0, 1, 0)
+FPSLabel.Position = UDim2.new(0.45, 0, 0, 0)
+
+local PingLabel = NewText(TopBar, "PING: --", 11, White)
+PingLabel.Size = UDim2.new(0.2, 0, 1, 0)
+PingLabel.Position = UDim2.new(0.65, 0, 0, 0)
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2_fromOffset(32, 32)
+CloseBtn.Position = UDim2.new(1, -37, 0, 5)
+CloseBtn.BackgroundColor3 = Panel
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Red
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 15
+CloseBtn.Parent = TopBar
+Corner(CloseBtn, 8)
+Stroke(CloseBtn, Red, 0.3, 1)
+
+local function ToggleHub(state)
+    Config.UI.Open = state
+    MainContainer.Visible = state
+    OpenSquare.Visible = not state
+end
+
+OpenSquare.MouseButton1Click:Connect(function() ToggleHub(true) end)
+CloseBtn.MouseButton1Click:Connect(function() ToggleHub(false) end)
+
+-- Sistema de Arrastar o Botão "BH" no Toque (Touch)
+local draggingSquare, dragStartSquare, startPosSquare
+
+OpenSquare.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingSquare = true
+        dragStartSquare = input.Position
+        startPosSquare = OpenSquare.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if draggingSquare and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStartSquare
+        OpenSquare.Position = UDim2_fromOffset(startPosSquare.X.Offset + delta.X, startPosSquare.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingSquare = false
+    end
+end)
+
+--========================================================
+-- SIDEBAR E SISTEMA DE PÁGINAS COM SCROLL
+--========================================================
+
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 52, 1, -42)
+Sidebar.Position = UDim2_fromOffset(0, 42)
+Sidebar.BackgroundColor3 = Background
+Sidebar.Parent = MainContainer
+Corner(Sidebar, 12)
+
+local SideLayout = Instance.new("UIListLayout")
+SideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+SideLayout.Padding = UDim.new(0, 6)
+SideLayout.Parent = Sidebar
+
+local SidePadding = Instance.new("UIPadding")
+SidePadding.PaddingTop = UDim.new(0, 8)
+SidePadding.Parent = Sidebar
+
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, -60, 1, -48)
+ContentArea.Position = UDim2_fromOffset(56, 44)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainContainer
+
+local Pages = {}
+local function CreatePage(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.Visible = false
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Purple
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.Parent = ContentArea
+
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
+    layout.Parent = page
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingRight = UDim.new(0, 8)
+    pad.Parent = page
+
+    Pages[name] = page
+    return page
+end
+
+local CombatPage = CreatePage("Combat")
+local AimPage = CreatePage("Aimbot")
+local ESPPage = CreatePage("ESP")
+local GlobePage = CreatePage("Globe")
+local CharPage = CreatePage("Character")
+local SettingsPage = CreatePage("Settings")
+
+CombatPage.Visible = true
+
+local TabButtons = {}
+local function AddTab(icon, page)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2_fromOffset(40, 40)
+    btn.BackgroundColor3 = Panel
+    btn.Text = icon
+    btn.TextSize = 18
+    btn.Parent = Sidebar
+    Corner(btn, 10)
+
+    table_insert(TabButtons, btn)
+
+    btn.MouseButton1Click:Connect(function()
+        for _, p in pairs(Pages) do p.Visible = false end
+        for _, b in pairs(TabButtons) do 
+            b.BackgroundColor3 = Panel
+            b.TextColor3 = Gray 
+        end
+        page.Visible = true
+        btn.BackgroundColor3 = PurpleDark
+        btn.TextColor3 = White
+    end)
+end
+
+AddTab("🔫", CombatPage)
+AddTab("🎯", AimPage)
+AddTab("👁", ESPPage)
+AddTab("🌐", GlobePage)
+AddTab("♙", CharPage)
+AddTab("⚙", SettingsPage)
+
+--========================================================
+-- CONTROLES DE UI (TOGGLES, SLIDERS & DROPDOWNS)
+--========================================================
+
+local function CreateSection(parent, title)
+    local sec = Instance.new("Frame")
+    sec.Size = UDim2.new(1, 0, 0, 24)
+    sec.BackgroundTransparency = 1
+    sec.Parent = parent
+
+    local lbl = NewText(sec, title, 12, PurpleLight)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Font = Enum.Font.GothamBold
+end
+
+local function CreateToggle(parent, text, tableRef, key)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 36)
+    btn.BackgroundColor3 = Background
+    btn.Text = text .. (tableRef[key] and "  [ ON ]" or "  [ OFF ]")
+    btn.TextColor3 = tableRef[key] and Green or Red
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.Parent = parent
+    Corner(btn, 8)
+
+    btn.MouseButton1Click:Connect(function()
+        tableRef[key] = not tableRef[key]
+        btn.Text = text .. (tableRef[key] and "  [ ON ]" or "  [ OFF ]")
+        btn.TextColor3 = tableRef[key] and Green or Red
+    end)
+end
+
+local function CreateSlider(parent, text, tableRef, key, min, max)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 48)
+    container.BackgroundColor3 = Background
+    container.Parent = parent
+    Corner(container, 8)
+
+    local label = NewText(container, text .. ": " .. tostring(tableRef[key]), 11, White)
+    label.Size = UDim2.new(1, -10, 0, 18)
+    label.Position = UDim2_fromOffset(8, 3)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local sliderBack = Instance.new("Frame")
+    sliderBack.Size = UDim2.new(1, -16, 0, 12)
+    sliderBack.Position = UDim2_fromOffset(8, 26)
+    sliderBack.BackgroundColor3 = Panel
+    sliderBack.Parent = container
+    Corner(sliderBack, 6)
+
+    local startPercent = math_clamp((tableRef[key] - min) / (max - min), 0, 1)
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new(startPercent, 0, 1, 0)
+    sliderFill.BackgroundColor3 = Purple
+    sliderFill.Parent = sliderBack
+    Corner(sliderFill, 6)
+
+    local isDragging = false
+
+    local function UpdateSlider(input)
+        local pos = input.Position.X
+        local fillPos = sliderBack.AbsolutePosition.X
+        local fillSize = sliderBack.AbsoluteSize.X
+        local percent = math_clamp((pos - fillPos) / fillSize, 0, 1)
+        local val = math_floor(min + (max - min) * percent)
+
+        tableRef[key] = val
+        sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        label.Text = text .. ": " .. tostring(val)
+    end
+
+    sliderBack.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            UpdateSlider(input)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            UpdateSlider(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = false
+        end
+    end)
+end
+
+local function CreateDropdown(parent, text, tableRef, key, options)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 38)
+    container.BackgroundColor3 = Background
+    container.Parent = parent
+    Corner(container, 8)
+
+    local label = NewText(container, text, 11, White)
+    label.Size = UDim2.new(0.5, -10, 1, 0)
+    label.Position = UDim2_fromOffset(8, 0)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0.48, -8, 0.75, 0)
+    button.Position = UDim2.new(0.5, 0, 0.125, 0)
+    button.BackgroundColor3 = Panel
+    button.Text = tostring(tableRef[key])
+    button.TextColor3 = PurpleLight
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 11
+    button.Parent = container
+    Corner(button, 6)
+    Stroke(button, Purple, 0.4, 1)
+
+    local index = table_find(options, tableRef[key]) or 1
+    button.MouseButton1Click:Connect(function()
+        index = (index % #options) + 1
+        tableRef[key] = options[index]
+        button.Text = tostring(options[index])
+    end)
+end
+
+--========================================================
+-- PREENCHIMENTO COMPLETO DAS ABAS
+--========================================================
+
+-- COMBAT PAGE
+CreateSection(CombatPage, "SILENT AIM & MODIFIERS")
+CreateToggle(CombatPage, "True Silent Aim", Config.Combat, "SilentAim")
+CreateSlider(CombatPage, "Alcance Silent Aim", Config.Combat, "SilentAimDistance", 50, 600)
+CreateSlider(CombatPage, "Ângulo Máximo Silent Aim", Config.Combat, "SilentAimMaxAngle", 10, 180)
+CreateSlider(CombatPage, "Chance de Acerto (%)", Config.Combat, "HitChance", 0, 100)
+CreateToggle(CombatPage, "Penetração em Zumbis", Config.Combat, "ZombiePenetration")
+CreateToggle(CombatPage, "Bala Instantânea", Config.Combat, "InstantBulletVelocity")
+CreateToggle(CombatPage, "Sem Dispersão (No Spread)", Config.Combat, "NoSpread")
+
+CreateSection(CombatPage, "WEAPON MODIFIERS")
+CreateToggle(CombatPage, "Sem Recuo (No Recoil)", Config.Weapon, "NoRecoil")
+CreateSlider(CombatPage, "Força do Recuo", Config.Weapon, "RecoilStrength", 0, 100)
+CreateToggle(CombatPage, "Recarga Rápida", Config.Weapon, "FastReload")
+CreateToggle(CombatPage, "Troca de Arma Instantânea", Config.Weapon, "InstantSwap")
+CreateToggle(CombatPage, "Atirar Através de Paredes", Config.Weapon, "ShootThroughWalls")
+CreateToggle(CombatPage, "Full Auto / Fogo Contínuo", Config.Weapon, "FullAuto")
+
+-- AIMBOT PAGE
+CreateSection(AimPage, "CONFIGURAÇÕES DE AIMBOT")
+CreateToggle(AimPage, "Ativar Aimbot", Config.Aimbot, "Enabled")
+CreateToggle(AimPage, "Exibir Círculo FOV", Config.Aimbot, "ShowFOV")
+CreateSlider(AimPage, "Raio do FOV", Config.Aimbot, "FOV", 30, 500)
+CreateSlider(AimPage, "Suavidade (Smoothness)", Config.Aimbot, "Smoothness", 1, 50)
+CreateDropdown(AimPage, "Parte Alvo", Config.Aimbot, "TargetPart", {"Head", "HumanoidRootPart", "Torso"})
+CreateToggle(AimPage, "Focar NPCs & Entidades", Config.Aimbot, "TargetNPCs")
+CreateToggle(AimPage, "Verificação de Parede (WallCheck)", Config.Aimbot, "WallCheck")
+CreateToggle(AimPage, "Predição de Movimento", Config.Aimbot, "Prediction")
+
+-- ESP PAGE
+CreateSection(ESPPage, "SISTEMA DE ESP (VISÃO EXTRA)")
+CreateToggle(ESPPage, "Ativar ESP", Config.ESP, "Enabled")
+CreateToggle(ESPPage, "Incluir NPCs / Inimigos", Config.ESP, "IncludeNPCs")
+CreateToggle(ESPPage, "Mostrar Nomes", Config.ESP, "Name")
+CreateToggle(ESPPage, "Mostrar Distância", Config.ESP, "Distance")
+CreateToggle(ESPPage, "Barra de Vida (HealthBar)", Config.ESP, "HealthBar")
+CreateToggle(ESPPage, "Mostrar Item Equipado", Config.ESP, "ShowTool")
+CreateToggle(ESPPage, "Colorir por Vida", Config.ESP, "ColorByHealth")
+CreateToggle(ESPPage, "Caixa 3D (Box)", Config.ESP, "Box")
+CreateToggle(ESPPage, "Chams (Highlight)", Config.ESP, "Chams")
+CreateToggle(ESPPage, "Linhas até Alvo (Tracers)", Config.ESP, "Tracers")
+
+-- GLOBE / VISUALS PAGE
+CreateSection(GlobePage, "ILUMINAÇÃO E VISUAL")
+CreateToggle(GlobePage, "Remover Névoa (No Fog)", Config.Globe, "NoFog")
+CreateToggle(GlobePage, "Brilho Total (FullBright)", Config.Globe, "FullBright")
+CreateToggle(GlobePage, "Travar FOV da Câmera (120)", Config.Globe, "FixedFOVEnabled")
+CreateToggle(GlobePage, "Hora do Dia Personalizada", Config.Globe, "CustomTime")
+CreateSlider(GlobePage, "Hora do Dia (0-24h)", Config.Globe, "TimeOfDay", 0, 24)
+
+CreateSection(GlobePage, "AUMENTAR HITBOX (HITBOX EXPANDER)")
+CreateToggle(GlobePage, "Ativar Hitbox Expander", Config.Globe, "HitboxEnabled")
+CreateDropdown(GlobePage, "Parte da Hitbox", Config.Globe, "HitboxTarget", {"Head", "HumanoidRootPart"})
+CreateSlider(GlobePage, "Tamanho da Hitbox", Config.Globe, "HitboxSize", 2, 40)
+CreateSlider(GlobePage, "Distância Máxima", Config.Globe, "MaxDistance", 50, 400)
+
+-- CHARACTER PAGE
+CreateSection(CharPage, "MOVIMENTAÇÃO E PERSONAGEM")
+CreateToggle(CharPage, "Ativar Velocidade Customizada", Config.Character, "SpeedEnabled")
+CreateSlider(CharPage, "Velocidade de Caminhada", Config.Character, "Speed", 16, 200)
+CreateToggle(CharPage, "Ativar Pulo Customizado", Config.Character, "JumpPowerEnabled")
+CreateSlider(CharPage, "Força do Pulo", Config.Character, "JumpPower", 50, 250)
+CreateToggle(CharPage, "Pulo Infinito no Ar", Config.Character, "InfiniteJump")
+CreateToggle(CharPage, "Modo Voo (Fly)", Config.Character, "Fly")
+CreateSlider(CharPage, "Velocidade do Voo", Config.Character, "FlySpeed", 10, 250)
+CreateToggle(CharPage, "Spin Bot (Girar)", Config.Character, "SpinBot")
+CreateSlider(CharPage, "Velocidade do Spin", Config.Character, "SpinSpeed", 10, 400)
+CreateToggle(CharPage, "Noclip (Atravessar Paredes)", Config.Character, "Noclip")
+
+-- SETTINGS PAGE
+CreateSection(SettingsPage, "OPÇÕES E FECHAMENTO")
+local CloseMenuBtn = Instance.new("TextButton")
+CloseMenuBtn.Size = UDim2.new(1, 0, 0, 40)
+CloseMenuBtn.BackgroundColor3 = Red
+CloseMenuBtn.Text = "FECHAR HUB (USAR BOTÃO 'BH')"
+CloseMenuBtn.TextColor3 = White
+CloseMenuBtn.Font = Enum.Font.GothamBold
+CloseMenuBtn.TextSize = 12
+CloseMenuBtn.Parent = SettingsPage
+Corner(CloseMenuBtn, 8)
+CloseMenuBtn.MouseButton1Click:Connect(function() ToggleHub(false) end)
+
+--========================================================
+-- SISTEMA NOCLIP & PULO INFINITO
+--========================================================
+
+local LocalCharacterParts = {}
+local function CacheParts(char)
+    LocalCharacterParts = {}
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table_insert(LocalCharacterParts, part)
+        end
+    end
+end
+
+if LocalPlayer.Character then CacheParts(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.2)
+    CacheParts(char)
+end)
+
+RunService.Stepped:Connect(function()
+    if Config.Character.Noclip then
+        for i = 1, #LocalCharacterParts do
+            local p = LocalCharacterParts[i]
+            if p and p.Parent then p.CanCollide = false end
+        end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if Config.Character.InfiniteJump and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+--========================================================
+-- SCANNER DE ENTIDADES E PLAYER ESP
+--========================================================
+
+local EntityCache = {}
+local OriginalSizes = {}
+
+local function ClearESP(model)
+    if EntityCache[model] then
+        for _, obj in pairs(EntityCache[model]) do
+            if typeof(obj) == "Instance" then obj:Destroy() end
+        end
+        EntityCache[model] = nil
+    end
+end
+
+local function GetRoot(model)
+    if not model then return nil end
+    return model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model.PrimaryPart
+end
+
+local function IsValidEntity(model)
+    if not model or not model:IsA("Model") or model == LocalPlayer.Character then return false end
+    local hum = model:FindFirstChildWhichIsA("Humanoid")
+    local root = GetRoot(model)
+    return hum and hum.Health > 0 and root ~= nil
+end
+
+local function SetupESP(model)
+    if EntityCache[model] or not IsValidEntity(model) then return end
+
+    local player = Players:GetPlayerFromCharacter(model)
+    local isPlayer = player ~= nil
+    local root = GetRoot(model)
+    local head = model:FindFirstChild("Head") or root
+    local hum = model:FindFirstChildWhichIsA("Humanoid")
+
+    if not root or not hum then return end
+
+    local data = {
+        Model = model,
+        Root = root,
+        Head = head,
+        Humanoid = hum,
+        IsPlayer = isPlayer,
+        Name = isPlayer and player.DisplayName or model.Name
+    }
+
+    local mainColor = isPlayer and Purple or OrangeNPC
+
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = model
+    highlight.FillColor = mainColor
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = White
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
+    highlight.Parent = model
+    data.Highlight = highlight
+
+    local box = Instance.new("BoxHandleAdornment")
+    box.Adornee = root
+    box.Size = Vector3_new(4, 6, 2)
+    box.Color3 = mainColor
+    box.Transparency = 0.6
+    box.AlwaysOnTop = true
+    box.Visible = false
+    box.Parent = root
+    data.Box = box
+
+    if head then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Size = UDim2_fromOffset(200, 55)
+        billboard.StudsOffset = Vector3_new(0, 3.5, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Adornee = head
+        billboard.Enabled = false
+        billboard.Parent = head
+
+        local nameLabel = NewText(billboard, "", 11, White)
+        nameLabel.Size = UDim2_fromOffset(200, 16)
+        nameLabel.Position = UDim2_fromOffset(0, 0)
+
+        local healthBg = Instance.new("Frame")
+        healthBg.Size = UDim2_fromOffset(120, 5)
+        healthBg.Position = UDim2_fromOffset(40, 20)
+        healthBg.BackgroundColor3 = Color3_fromRGB(40, 40, 40)
+        healthBg.BorderSizePixel = 0
+        healthBg.Parent = billboard
+        Corner(healthBg, 3)
+
+        local healthFill = Instance.new("Frame")
+        healthFill.Size = UDim2_fromScale(1, 1)
+        healthFill.BackgroundColor3 = Green
+        healthFill.BorderSizePixel = 0
+        healthFill.Parent = healthBg
+        Corner(healthFill, 3)
+
+        local infoLabel = NewText(billboard, "", 10, Gray)
+        infoLabel.Size = UDim2_fromOffset(200, 25)
+        infoLabel.Position = UDim2_fromOffset(0, 26)
+
+        data.Billboard = billboard
+        data.NameLabel = nameLabel
+        data.HealthBg = healthBg
+        data.HealthFill = healthFill
+        data.InfoLabel = infoLabel
+    end
+
+    EntityCache[model] = data
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        for model, data in pairs(EntityCache) do
+            if not model or not model.Parent or not data.Humanoid or data.Humanoid.Health <= 0 then
+                ClearESP(model)
+            end
+        end
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and IsValidEntity(obj) then
+                SetupESP(obj)
+            end
+        end
+    end
+end)
+
+--========================================================
+-- BUSCA DE ALVO AIMBOT
+--========================================================
+
+local function GetClosestTarget()
+    local closest, shortestDist = nil, Config.Aimbot.FOV
+    local camPos = Camera.CFrame.Position
+    local screenCenter = Vector2_new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for model, data in pairs(EntityCache) do
+        local isAllowed = data.IsPlayer or Config.Aimbot.TargetNPCs
+        if isAllowed and model and model.Parent and data.Humanoid and data.Humanoid.Health > 0 then
+            local targetPart = model:FindFirstChild(Config.Aimbot.TargetPart) or data.Head or data.Root
+            if targetPart then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local distFromCenter = (Vector2_new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                    if distFromCenter < shortestDist then
+                        shortestDist = distFromCenter
+                        closest = targetPart
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+--========================================================
+-- CONTADOR DE FPS E PING
+--========================================================
+
+task.spawn(function()
+    local lastTime = os.clock()
+    local frameCount = 0
+    while true do
+        task.wait(0.5)
+        local currentTime = os.clock()
+        local fps = math_floor(frameCount / (currentTime - lastTime))
+        FPSLabel.Text = "FPS: " .. tostring(fps)
+        frameCount = 0
+        lastTime = currentTime
+
+        local ping = 0
+        pcall(function()
+            ping = math_floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+        end)
+        PingLabel.Text = "PING: " .. tostring(ping) .. "ms"
+    end
+end)
+
+--========================================================
+-- LOOP PRINCIPAL DE RENDERIZAÇÃO (RENDERSTEPPED)
+--========================================================
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    -- Atualização do Círculo de FOV
+    if Config.Aimbot.ShowFOV then
+        FOVCircle.Visible = true
+        FOVCircle.Size = UDim2_fromOffset(Config.Aimbot.FOV * 2, Config.Aimbot.FOV * 2)
+    else
+        FOVCircle.Visible = false
+    end
+
+    -- Atualização do ESP
+    if Config.ESP.Enabled then
+        local camPos = Camera.CFrame.Position
+        for model, data in pairs(EntityCache) do
+            local show = (data.IsPlayer and true) or (not data.IsPlayer and Config.ESP.IncludeNPCs)
+            if show and data.Humanoid and data.Humanoid.Health > 0 and data.Root then
+                local dist = math_floor((camPos - data.Root.Position).Magnitude)
+                local healthPct = math_clamp(data.Humanoid.Health / math.max(data.Humanoid.MaxHealth, 1), 0, 1)
+                local healthColor = Green:Lerp(Red, 1 - healthPct)
+                local finalColor = Config.ESP.ColorByHealth and healthColor or (data.IsPlayer and Purple or OrangeNPC)
+
+                if data.Highlight then
+                    data.Highlight.Enabled = Config.ESP.Chams
+                    data.Highlight.FillColor = finalColor
+                end
+
+                if data.Box then
+                    data.Box.Visible = Config.ESP.Box
+                    data.Box.Color3 = finalColor
+                end
+
+                if data.Billboard then
+                    data.Billboard.Enabled = Config.ESP.Name or Config.ESP.Distance or Config.ESP.HealthBar or Config.ESP.ShowTool
+                    
+                    if Config.ESP.Name then
+                        data.NameLabel.Text = data.Name
+                        data.NameLabel.TextColor3 = finalColor
+                    else
+                        data.NameLabel.Text = ""
+                    end
+
+                    if Config.ESP.HealthBar then
+                        data.HealthBg.Visible = true
+                        data.HealthFill.Size = UDim2_fromScale(healthPct, 1)
+                        data.HealthFill.BackgroundColor3 = healthColor
+                    else
+                        data.HealthBg.Visible = false
+                    end
+
+                    local toolObj = model:FindFirstChildOfClass("Tool")
+                    local toolName = toolObj and toolObj.Name or "Nenhum"
+                    local infoText = ""
+
+                    if Config.ESP.Distance then infoText = infoText .. "[" .. dist .. "m] " end
+                    if Config.ESP.ShowTool then infoText = infoText .. "Item: " .. toolName end
+                    data.InfoLabel.Text = infoText
+                end
+            else
+                if data.Highlight then data.Highlight.Enabled = false end
+                if data.Box then data.Box.Visible = false end
+                if data.Billboard then data.Billboard.Enabled = false end
+            end
+        end
+    else
+        for _, data in pairs(EntityCache) do
+            if data.Highlight then data.Highlight.Enabled = false end
+            if data.Box then data.Box.Visible = false end
+            if data.Billboard then data.Billboard.Enabled = false end
+        end
+    end
+
+    -- Lógica de Aimbot
+    if Config.Aimbot.Enabled then
+        local targetPart = GetClosestTarget()
+        if targetPart then
+            local currentCFrame = Camera.CFrame
+            local targetCFrame = CFrame_new(currentCFrame.Position, targetPart.Position)
+            local smoothness = math_clamp(Config.Aimbot.Smoothness, 1, 50)
+            Camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / smoothness)
+        end
+    end
+
+    -- Hitbox Expander
+    for model, data in pairs(EntityCache) do
+        if model and model.Parent then
+            local targetPart = model:FindFirstChild(Config.Globe.HitboxTarget)
+            if targetPart and targetPart:IsA("BasePart") then
+                if not OriginalSizes[targetPart] then
+                    OriginalSizes[targetPart] = targetPart.Size
+                end
+
+                local distMeters = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                if Config.Globe.HitboxEnabled and distMeters <= Config.Globe.MaxDistance then
+                    targetPart.Size = Vector3_new(Config.Globe.HitboxSize, Config.Globe.HitboxSize, Config.Globe.HitboxSize)
+                    targetPart.Transparency = 0.7
+                    targetPart.CanCollide = false
+                else
+                    if OriginalSizes[targetPart] then
+                        targetPart.Size = OriginalSizes[targetPart]
+                        targetPart.Transparency = 0
+                    end
+                end
+            end
+        end
+    end
+
+    -- Modificações Globais de Iluminação e FOV
+    if Config.Globe.FixedFOVEnabled then Camera.FieldOfView = Config.Globe.FixedFOV end
+    if Config.Globe.FullBright then
+        Lighting.Ambient = Color3_fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3_fromRGB(255, 255, 255)
+    end
+    if Config.Globe.NoFog then Lighting.FogEnd = 9e9 end
+    if Config.Globe.CustomTime then
+        Lighting.TimeOfDay = string.format("%02d:00:00", Config.Globe.TimeOfDay)
+    end
+
+    -- Modificações do Personagem (Velocidade, Pulo, Voo, Spin)
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildWhichIsA("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+
+        if hum then
+            if Config.Character.SpeedEnabled then hum.WalkSpeed = Config.Character.Speed end
+            if Config.Character.JumpPowerEnabled then
+                hum.UseJumpPower = true
+                hum.JumpPower = Config.Character.JumpPower
+            end
+        end
+
+        if root and Config.Character.SpinBot then
+            root.CFrame = root.CFrame * CFrame_Angles(0, math_rad(Config.Character.SpinSpeed * deltaTime * 10), 0)
+        end
+
+        if root and Config.Character.Fly then
+            local flyVec = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then flyVec = flyVec + Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then flyVec = flyVec - Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then flyVec = flyVec - Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then flyVec = flyVec + Camera.CFrame.RightVector end
+            
+            if flyVec.Magnitude > 0 then
+                root.Velocity = flyVec.Unit * Config.Character.FlySpeed
+            else
+                root.Velocity = Vector3.zero
+            end
+        end
+    end
+end)
